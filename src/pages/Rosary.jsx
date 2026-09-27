@@ -11,10 +11,10 @@ const SettingsMenu = lazy(() => import('../components/rosary/SettingsMenu'));
 import CommandBar from '../components/rosary/CommandBar';
 import ZenButton from '../components/rosary/ZenButton';
 import { resolveMeditation } from '../components/rosary/meditation/MontfortMethods';
-import MeditationBlock from '../components/rosary/meditation/MeditationBlock';
-import PrayerMethodSection from '../components/rosary/meditation/PrayerMethodSection';
 import { generatePrayerSequence, getMysteryForDay, idToUrl, parseUrlId } from '../components/rosary/RosaryData';
 import { TRANSLATIONS } from '../components/rosary/Translations';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const detectBrowserLanguage = () => {
   const browserLang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
@@ -24,10 +24,24 @@ const detectBrowserLanguage = () => {
 const detectDarkModePreference = () =>
   window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 
+// Settings (dark mode, contrast, font size, accent, animations, speed, the
+// three languages, Zen button/mode, and whether the tutorial has been seen)
+// are saved together under one key so a returning visitor gets their app
+// back the way they left it, instead of the defaults every time.
+const loadSettings = () => {
+  try {
+    const saved = localStorage.getItem('rosarySettings');
+    return saved ? JSON.parse(saved) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
 export default function Rosary() {
-  const [uiLang, setUiLang] = useState(detectBrowserLanguage);
-  const [prayerLang, setPrayerLang] = useState(detectBrowserLanguage);
-  const [mysteryLang, setMysteryLang] = useState(detectBrowserLanguage);
+  const [savedSettings] = useState(loadSettings);
+  const [uiLang, setUiLang] = useState(() => savedSettings.uiLang || detectBrowserLanguage());
+  const [prayerLang, setPrayerLang] = useState(() => savedSettings.prayerLang || detectBrowserLanguage());
+  const [mysteryLang, setMysteryLang] = useState(() => savedSettings.mysteryLang || detectBrowserLanguage());
   const [currentMystery, setCurrentMystery] = useState(() => {
     const parsed = parseUrlId(window.location.hash.replace('#', ''));
     if (parsed?.mysterySet) return parsed.mysterySet;
@@ -41,20 +55,22 @@ export default function Rosary() {
     } catch (e) {}
     return getMysteryForDay();
   });
-  const [isDarkMode, setIsDarkMode] = useState(detectDarkModePreference);
-  const [isHighContrast, setIsHighContrast] = useState(false);
-  const [fontSize, setFontSize] = useState(18);
+  const [isDarkMode, setIsDarkMode] = useState(() => savedSettings.isDarkMode ?? detectDarkModePreference());
+  const [isHighContrast, setIsHighContrast] = useState(() => savedSettings.isHighContrast ?? false);
+  const [fontSize, setFontSize] = useState(() => savedSettings.fontSize ?? 18);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [animationsEnabled, setAnimationsEnabled] = useState(true);
-  const [animationSpeed, setAnimationSpeed] = useState(1.0);
-  const [accentTheme, setAccentTheme] = useState('blue');
-  const [zenButtonVisible, setZenButtonVisible] = useState(false);
-  const [zenMode, setZenMode] = useState('tap');
+  const [animationsEnabled, setAnimationsEnabled] = useState(() => savedSettings.animationsEnabled ?? true);
+  const [animationSpeed, setAnimationSpeed] = useState(() => savedSettings.animationSpeed ?? 1.0);
+  const [accentTheme, setAccentTheme] = useState(() => savedSettings.accentTheme || 'blue');
+  const [zenButtonVisible, setZenButtonVisible] = useState(() => savedSettings.zenButtonVisible ?? false);
+  const [zenMode, setZenMode] = useState(() => savedSettings.zenMode || 'tap');
 
   const [navOpen, setNavOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [tutorialOpen, setTutorialOpen] = useState(true);
+  // The first-run tutorial opens automatically only until it's been seen once.
+  const [tutorialSeen, setTutorialSeen] = useState(() => !!savedSettings.tutorialSeen);
+  const [tutorialOpen, setTutorialOpen] = useState(() => !savedSettings.tutorialSeen);
   const [navLoaded, setNavLoaded] = useState(false);
   const [langLoaded, setLangLoaded] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -70,6 +86,25 @@ export default function Rosary() {
   }, [meditationMethod]);
 
   const selectMeditation = useCallback((id) => setMeditationMethod(id), []);
+
+  // Persist the settings above so a returning visitor keeps their choices.
+  useEffect(() => {
+    try {
+      localStorage.setItem('rosarySettings', JSON.stringify({
+        uiLang, prayerLang, mysteryLang,
+        isDarkMode, isHighContrast, fontSize,
+        animationsEnabled, animationSpeed, accentTheme,
+        zenButtonVisible, zenMode,
+        tutorialSeen,
+      }));
+    } catch (e) {}
+  }, [
+    uiLang, prayerLang, mysteryLang,
+    isDarkMode, isHighContrast, fontSize,
+    animationsEnabled, animationSpeed, accentTheme,
+    zenButtonVisible, zenMode,
+    tutorialSeen,
+  ]);
 
   // Build prayer sequence. When languages change we rebuild but preserve position
   // by mapping the current prayer type/decade/hailMaryNumber to the new sequence.
@@ -214,18 +249,29 @@ export default function Rosary() {
     setNavOpen(false);
   }, [PRAYER_SEQUENCE]);
 
+  // Manually resetting to the start (the R key, or the Reset Prayer button in
+  // the nav menu) asks for confirmation first; it's easy to hit by accident
+  // and would otherwise silently throw away the current position.
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const requestReset = useCallback(() => setResetConfirmOpen(true), []);
+  const confirmReset = useCallback(() => {
+    handleReset();
+    setResetConfirmOpen(false);
+  }, [handleReset]);
+  const cancelReset = useCallback(() => setResetConfirmOpen(false), []);
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); handleNext(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); handlePrevious(); }
-      else if (e.key === 'r' || e.key === 'R') handleReset();
+      else if (e.key === 'r' || e.key === 'R') requestReset();
       else if (e.key === 'd' || e.key === 'D') setIsDarkMode(p => !p);
       else if (e.key === 'h' || e.key === 'H') setControlsVisible(p => !p);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleNext, handlePrevious, handleReset]);
+  }, [handleNext, handlePrevious, requestReset]);
 
   // Touch: swipe + double-tap
   const lastTapRef = useRef(0);
@@ -282,6 +328,7 @@ export default function Rosary() {
   const closeTutorial = useCallback(() => {
     setTutorialOpen(false);
     setControlsVisible(true);
+    setTutorialSeen(true);
   }, []);
 
   const uiText = TRANSLATIONS[uiLang].ui;
@@ -299,29 +346,10 @@ export default function Rosary() {
   // The inline Prayer Method selector appears near the beginning (first
   // screen) and near the mystery context (each decade announcement), so
   // the user can change method mid-Rosary without losing position.
+  // PrayerDisplay renders the selector and the meditation block itself from
+  // these data props (rather than receiving pre-built JSX) so its React.memo
+  // can actually skip re-rendering when nothing here has changed.
   const showMethodSection = isFirst || currentPrayer?.type === 'mystery_announcement';
-  const methodSectionNode = showMethodSection ? (
-    <PrayerMethodSection
-      method={meditationMethod}
-      onSelect={selectMeditation}
-      isDarkMode={isDarkMode}
-      uiLang={uiLang}
-      accentColor={accentColor}
-      fontSize={fontSize}
-    />
-  ) : null;
-
-  const meditationNode = meditationBlock ? (
-    <MeditationBlock
-      block={meditationBlock}
-      isDarkMode={isDarkMode}
-      uiLang={uiLang}
-      fontSize={fontSize}
-      animationsEnabled={animationsEnabled}
-      animationSpeed={animationSpeed}
-      accentColor={accentColor}
-    />
-  ) : null;
 
   // High contrast overrides prayer display background / text
   const contrastClass = isHighContrast
@@ -376,8 +404,10 @@ export default function Rosary() {
           accentColor={accentColor}
           prayerLang={prayerLang}
           hailMaryPhrase={hmPhrase}
-          methodSection={methodSectionNode}
-          meditation={meditationNode}
+          showMethodSection={showMethodSection}
+          meditationMethod={meditationMethod}
+          onSelectMeditation={selectMeditation}
+          meditationBlock={meditationBlock}
         />
       </main>
 
@@ -423,7 +453,7 @@ export default function Rosary() {
             isOpen={navOpen}
             onClose={closeNav}
             onJumpTo={handleJumpTo}
-            onReset={handleReset}
+            onReset={requestReset}
             currentMystery={currentMystery}
             setCurrentMystery={setCurrentMystery}
             currentIndex={currentIndex}
@@ -492,6 +522,26 @@ export default function Rosary() {
           </div>
         </motion.div>
       )}
+
+      <Dialog open={resetConfirmOpen} onOpenChange={(open) => !open && cancelReset()}>
+        <DialogContent className={`max-w-sm ${isDarkMode ? 'bg-gray-900 border-gray-800' : ''}`} closeClassName={isDarkMode ? 'text-white' : ''}>
+          <DialogHeader>
+            <DialogTitle className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+              {uiText.resetPrayer}
+            </DialogTitle>
+            <DialogDescription className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+              {uiText.resetConfirmBody}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelReset}
+              className={isDarkMode ? 'border-gray-600 text-gray-200 bg-gray-800 hover:bg-gray-700 hover:text-white' : ''}>
+              {uiText.cancel}
+            </Button>
+            <Button onClick={confirmReset}>{uiText.resetPrayer}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

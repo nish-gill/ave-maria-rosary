@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { getTranslatedMysteries } from './RosaryData';
 import { TRANSLATIONS } from './Translations';
-import { CheckCircle, Home } from 'lucide-react';
+import { CheckCircle, Home, RotateCcw } from 'lucide-react';
 
 function NavMenu({
   isOpen, onClose, onJumpTo, onReset,
@@ -90,11 +90,15 @@ function NavMenu({
           <DialogDescription className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
             {uiText.prayerNav}
           </DialogDescription>
-          {/* Quick action — jump to start (pinned in header so it stays visible while scrolling) */}
-          <div className="pt-3">
+          {/* Quick actions — jump to start / reset (pinned in header so they stay visible while scrolling) */}
+          <div className="pt-3 flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { onJumpTo(0); onClose(); }}
-              className={`w-full ${isDarkMode ? 'border-gray-600 text-gray-200 bg-gray-800 hover:bg-gray-700 hover:text-white' : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-100'}`}>
+              className={`flex-1 ${isDarkMode ? 'border-gray-600 text-gray-200 bg-gray-800 hover:bg-gray-700 hover:text-white' : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-100'}`}>
               <Home className="w-4 h-4 mr-2" />{uiText.jumpToStart}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { onReset(); onClose(); }}
+              className={`flex-1 ${isDarkMode ? 'border-gray-600 text-gray-200 bg-gray-800 hover:bg-gray-700 hover:text-white' : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-100'}`}>
+              <RotateCcw className="w-4 h-4 mr-2" />{uiText.resetPrayer}
             </Button>
           </div>
         </DialogHeader>

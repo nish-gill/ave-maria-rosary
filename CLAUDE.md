@@ -69,28 +69,47 @@ these ids with array indexes. Progress is saved to localStorage
 returns `{ phrase, block }`; `PrayerMethodSection` is the inline selector,
 `MeditationBlock` renders a block.
 
-## Known bugs (fix early)
+## Known bugs (fixed 2026-09-27, see git history)
 
-- Method 5 shows nothing on Hail Marys for the Luminous mysteries:
-  `getMethod5Motive` has no `luminous` offset (should be 15; motives 151–200
-  exist in the array).
-- Method UI strings (`ui.montfort`) exist only in English; Method 2/3 phrase
-  insertion only works when prayer language is English (other languages get an
-  English caption).
-- `PrayerMethodSection` ignores the animations setting (expand/collapse and
-  chevron always animate). The owner cares about this: disabling animations
-  must disable all of them.
-- `PrayerDisplay`'s `React.memo` is defeated: `Rosary.jsx` passes
-  `methodSection` / `meditation` as JSX created every render. Pass data props
-  and render inside `PrayerDisplay`.
-- Settings (dark mode, contrast, font size, accent, animations, speed, the three
-  languages, Zen button/mode) are not persisted; tutorial opens on every visit
-  (`tutorialOpen` starts `true`).
-- Pressing `R` resets the Rosary with no confirmation.
-- `TutorialHints.jsx` still contains code that clicks the Base44 badge's close
-  button; it is dead now and can be removed.
+All of the below are fixed. Kept here as a record of what changed and why.
+
+- ~~Method 5 shows nothing on Hail Marys for the Luminous mysteries~~ — Fixed:
+  `getMethod5Motive`'s `setOffset` was missing `luminous: 15`
+  ([Method5Content.jsx](src/components/rosary/meditation/Method5Content.jsx)).
+- ~~Method UI strings (`ui.montfort`) exist only in English~~ — Fixed: added
+  translated `montfort` blocks to all 11 other languages in
+  [Translations.jsx](src/components/rosary/Translations.jsx). Left alone on
+  purpose: Method 2/3's Hail-Mary phrase insertion still only works for
+  English prayer text — that phrase content itself is Base44-AI-invented
+  placeholder text (see "Five Methods" below), so translating the insertion
+  mechanism now would just multiply text that's getting replaced in the
+  Montfort restructure (work item 5). Non-English prayer languages still get
+  a visible italic caption fallback, which was already in place.
+- ~~`PrayerMethodSection` ignores the animations setting~~ — Fixed: it now
+  takes `animationsEnabled`/`animationSpeed` props and zeroes the
+  expand/collapse transition duration and the chevron's CSS transition when
+  animations are off, matching the pattern already used in
+  `MeditationBlock`/`CommandBar`.
+- ~~`PrayerDisplay`'s `React.memo` is defeated~~ — Fixed: `Rosary.jsx` now
+  passes data props (`showMethodSection`, `meditationMethod`,
+  `onSelectMeditation`, `meditationBlock`) instead of pre-built JSX;
+  `PrayerDisplay` renders `PrayerMethodSection`/`MeditationBlock` itself.
+- ~~Settings are not persisted; tutorial opens on every visit~~ — Fixed: all
+  of dark mode, contrast, font size, accent, animations, speed, the three
+  languages, and Zen button/mode now load from and save to one
+  `rosarySettings` localStorage key. The tutorial now only auto-opens until
+  it's been dismissed once (`tutorialSeen` in the same object).
+- ~~Pressing `R` resets the Rosary with no confirmation~~ — Fixed: `R` (and a
+  new "Reset Prayer" button in the nav menu, which reuses the `onReset` prop
+  and `resetPrayer` translation that already existed but were never wired to
+  anything visible) now opens a confirm dialog first.
+- ~~`TutorialHints.jsx` still contains code that clicks the Base44 badge's
+  close button~~ — Fixed: removed.
 - Previously reported and never confirmed fixed: the nav menu scrolling to the
-  current prayer when opened, and menus respecting "animations off". Re-test.
+  current prayer when opened, and menus respecting "animations off". Re-tested
+  2026-09-27 — both already worked correctly (nav menu: the `scrollIntoView`
+  effect in `NavMenu.jsx`; menus: the `body.no-animations [data-state]` CSS
+  rule already disables Radix dialog animations).
 
 ## Optimizations (measured on the Base44 build)
 
@@ -182,7 +201,7 @@ de vos entrailles"; Japanese reads "御子イエス".
 1. **Done** — Install, build, run; compare with the live Base44 app (see note
    above).
 2. PWA + deploy (so the owner has an installable app early).
-3. Bug fixes above.
+3. **Done** — Bug fixes above.
 4. Optimizations above.
 5. Montfort restructure (plumbing only), then real content from the owner,
    then translations.
