@@ -23,11 +23,12 @@ function PrayerDisplay({
   meditationMethod = 'none',
   onSelectMeditation,
   meditationBlock = null,
+  translationsVersion,
 }) {
   const d = animationsEnabled ? (1 / (animationSpeed || 1)) : 0;
   const mysteries = getTranslatedMysteries(mysteryLang || language);
   const mystery = mysteries[currentMystery];
-  const uiText = TRANSLATIONS[language].ui;
+  const uiText = TRANSLATIONS[language]?.ui || TRANSLATIONS.en.ui;
 
   const hcBold = isHighContrast ? 'font-bold' : '';
 
@@ -188,6 +189,7 @@ function PrayerDisplay({
             fontSize={fontSize}
             animationsEnabled={animationsEnabled}
             animationSpeed={animationSpeed}
+            translationsVersion={translationsVersion}
           />
         )}
         <motion.div
@@ -211,6 +213,7 @@ function PrayerDisplay({
             animationsEnabled={animationsEnabled}
             animationSpeed={animationSpeed}
             accentColor={accentColor}
+            translationsVersion={translationsVersion}
           />
         )}
       </div>

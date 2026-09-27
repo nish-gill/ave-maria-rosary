@@ -2,18 +2,7 @@ import React, { useState } from 'react';
 import { Zap, Moon, Sun, Contrast, ChevronDown, ChevronUp } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { TRANSLATIONS } from './Translations';
-
-export const ACCENT_THEMES = [
-  { id: 'blue',        label: 'Blue',        color: '#3b82f6' },
-  { id: 'gold',        label: 'Gold',        color: '#d97706' },
-  { id: 'rose',        label: 'Rose',        color: '#db2777' },
-  { id: 'green',       label: 'Green',       color: '#16a34a' },
-  { id: 'red',         label: 'Red',         color: '#dc2626' },
-  { id: 'hc-white',    label: 'White/Black', color: '#000000', darkColor: '#ffffff', highContrast: true, splitSwatch: true },
-  { id: 'hc-yellow',   label: 'Yellow',      color: '#facc15', highContrast: true },
-  { id: 'hc-cyan',     label: 'Cyan',        color: '#22d3ee', highContrast: true },
-  { id: 'hc-lime',     label: 'Lime',        color: '#a3e635', highContrast: true },
-];
+import { ACCENT_THEMES } from './themes';
 
 function SettingsMenu({
   isOpen, onClose, isDarkMode, setIsDarkMode,
@@ -43,10 +32,15 @@ function SettingsMenu({
 
   const useGrid = fontSize <= 20;
 
-  const cardBase = `rounded-xl border cursor-pointer transition-all duration-150 active:scale-[0.98] select-none flex flex-col items-center justify-center gap-2 text-center`;
+  // Every hand-rolled CSS transition in this menu is gated on animationsEnabled
+  // too — otherwise turning animations off wouldn't even affect the very
+  // screen that offers the toggle.
+  const transitionClass = animationsEnabled ? 'transition-all duration-150' : '';
+
+  const cardBase = `rounded-xl border cursor-pointer ${transitionClass} active:scale-[0.98] select-none flex flex-col items-center justify-center gap-2 text-center`;
   const cardIdle = isDarkMode ? 'bg-gray-800/40 border-gray-700 hover:bg-gray-700/60' : 'bg-gray-50 border-gray-200 hover:bg-gray-100';
 
-  const rowBase = `rounded-xl border cursor-pointer transition-all duration-150 active:scale-[0.98] select-none`;
+  const rowBase = `rounded-xl border cursor-pointer ${transitionClass} active:scale-[0.98] select-none`;
   const rowIdle = isDarkMode ? 'bg-gray-800/40 border-gray-700 hover:bg-gray-700/60' : 'bg-gray-50 border-gray-200 hover:bg-gray-100';
 
   const activeStyle = { borderColor: accent, boxShadow: `inset 0 0 0 1px ${accent}44` };
@@ -211,7 +205,7 @@ function SettingsMenu({
                         className="flex flex-col items-center gap-1.5"
                       >
                         <div
-                          className="w-8 h-8 rounded-full transition-all duration-150"
+                          className={`w-8 h-8 rounded-full ${transitionClass}`}
                           style={{
                             background: theme.color,
                             boxShadow: accentTheme === theme.id
@@ -241,7 +235,7 @@ function SettingsMenu({
                         className="flex flex-col items-center gap-1.5"
                       >
                         <div
-                          className="w-8 h-8 rounded-full transition-all duration-150"
+                          className={`w-8 h-8 rounded-full ${transitionClass}`}
                           style={{
                             background: theme.splitSwatch ? undefined : swatchColor,
                             boxShadow: isSelected
@@ -288,15 +282,15 @@ function SettingsMenu({
                   role="switch"
                   aria-checked={zenButtonVisible}
                   onClick={() => setZenButtonVisible(v => !v)}
-                  className={`w-full text-left rounded-xl p-3 border flex items-center justify-between transition-all duration-150 ${zenButtonVisible ? activeBg : rowIdle}`}
+                  className={`w-full text-left rounded-xl p-3 border flex items-center justify-between ${transitionClass} ${zenButtonVisible ? activeBg : rowIdle}`}
                   style={zenButtonVisible ? activeStyle : {}}
                   >
                     <span className={`font-medium ${labelClass}`} style={{ fontSize: `${Math.round(uiFontSize * 0.9)}px` }}>
                       {t.showZenButton}
                     </span>
-                    <div className="rounded-full transition-colors flex items-center px-0.5"
+                    <div className={`rounded-full flex items-center px-0.5 ${animationsEnabled ? 'transition-colors' : ''}`}
                       style={{ minWidth: '2rem', height: '1.1rem', background: zenButtonVisible ? accent : (isDarkMode ? '#4b5563' : '#d1d5db') }}>
-                      <div className={`rounded-full bg-white shadow transition-transform duration-200 ${zenButtonVisible ? 'translate-x-3.5' : 'translate-x-0'}`}
+                      <div className={`rounded-full bg-white shadow ${animationsEnabled ? 'transition-transform duration-200' : ''} ${zenButtonVisible ? 'translate-x-3.5' : 'translate-x-0'}`}
                         style={{ width: '0.85rem', height: '0.85rem' }} />
                     </div>
                   </button>
@@ -311,7 +305,7 @@ function SettingsMenu({
                         <button
                           key={opt.id}
                           onClick={() => setZenMode(opt.id)}
-                          className={`flex-1 rounded-xl p-3 border text-center transition-all duration-150 ${zenMode === opt.id ? activeBg : rowIdle}`}
+                          className={`flex-1 rounded-xl p-3 border text-center ${transitionClass} ${zenMode === opt.id ? activeBg : rowIdle}`}
                           style={zenMode === opt.id ? activeStyle : {}}
                         >
                           <p className={`font-semibold ${labelClass}`} style={{ fontSize: `${Math.round(uiFontSize * 0.85)}px` }}>{opt.label}</p>

@@ -63,11 +63,15 @@ every prayer has a **permanent id** (`OPEN-SIGN`, `OPEN-CREED`, `OPEN-OF`,
 `CLOSE-FINAL`). In the URL the `D` becomes the mystery-set letter
 (`J`/`S`/`G`/`L`, e.g. `#J1-HM05`) via `idToUrl`/`parseUrlId`. Never replace
 these ids with array indexes. Progress is saved to localStorage
-(`rosaryProgress`), as is the method (`rosaryMeditation`). All text lives in
-`Translations.jsx` (~127 KB, all languages). The Montfort layer is
+(`rosaryProgress`), as is the method (`rosaryMeditation`) and every other
+setting (`rosarySettings`). All text lives under
+[translations/](src/components/rosary/translations/) (~127 KB total, one file
+per language, loaded on demand — see Optimizations below); `Translations.jsx`
+itself is now just the loader. The Montfort layer is
 `meditation/MontfortMethods.jsx` → `resolveMeditation(method, prayer, set)`
 returns `{ phrase, block }`; `PrayerMethodSection` is the inline selector,
-`MeditationBlock` renders a block.
+`MeditationBlock` renders a block. Methods 4/5's content files load on demand
+the same way (`ensureMethodContentLoaded`).
 
 ## Known bugs (fixed 2026-09-27, see git history)
 
@@ -111,17 +115,61 @@ All of the below are fixed. Kept here as a record of what changed and why.
   effect in `NavMenu.jsx`; menus: the `body.no-animations [data-state]` CSS
   rule already disables Radix dialog animations).
 
-## Optimizations (measured on the Base44 build)
+### More bugs found during a second pass (fixed 2026-09-27)
 
-- `ACCENT_THEMES` is imported from `SettingsMenu.jsx`, which pulls the whole
-  Settings menu into the main bundle and defeats its `lazy()` import. Move it to
-  its own file (e.g. `components/rosary/themes.js`).
-- All 12 languages load up front. Split `Translations.jsx` per language; keep
-  English bundled as fallback; load others with dynamic `import()`.
-- Montfort content (Methods 4/5 ≈ 35 KB source) loads even for the standard
-  Rosary; load per method on selection.
-- Base44's live main bundle was 681 KB raw / 231 KB gzipped; its badge script
-  (154 KB gzipped) is gone now that we host ourselves.
+- ~~`ZenButton` in "Instant Tap" mode does nothing on a touchscreen~~ — Fixed:
+  `startHold` returned early for tap mode *before* calling
+  `e.preventDefault()`, so a real tap fired both the touch events and the
+  browser's synthesized mousedown/mouseup/click afterward — `handleRelease`
+  ran twice, toggling `controlsVisible` on and back off. `preventDefault()`
+  now runs unconditionally, first thing in the handler.
+  ([ZenButton.jsx](src/components/rosary/ZenButton.jsx))
+- ~~`SettingsMenu`'s own toggle cards, accent swatches, and Zen switch always
+  animate~~ — Fixed: same class of bug as the `PrayerMethodSection` one above,
+  just in a different file — ironic since it's the very screen with the
+  "Animations" toggle on it. All gated on `animationsEnabled` now.
+- ~~`RosaryData.jsx`'s English-fallback data duplicates the same Scripture
+  verse for the Assumption and Coronation mysteries~~ — Fixed (cosmetic; this
+  fallback only runs if a language is somehow missing from `TRANSLATIONS`,
+  which shouldn't happen — every language already has its own `mysteries`).
+
+## Optimizations (done 2026-09-27)
+
+All three below are done. Base44's live main bundle was 681 KB raw / 231 KB
+gzipped, plus a 154 KB gzipped badge script gone now that we host ourselves;
+this build's own main chunk went from **563.84 KB / 188.19 KB gzip → 410.75
+KB / 132.88 KB gzip** (≈29% smaller gzipped) over the course of these three:
+
+- ~~`ACCENT_THEMES` import defeats `SettingsMenu`'s `lazy()`~~ — Fixed: moved
+  to [themes.js](src/components/rosary/themes.js); `SettingsMenu` now code-splits
+  into its own ~3 KB gzip chunk.
+- ~~All 12 languages load up front~~ — Fixed: `Translations.jsx` is now a
+  loader — English is bundled directly (the fallback everything already used
+  `?.ui || TRANSLATIONS.en.ui` for), the other 11 live under
+  [translations/](src/components/rosary/translations/) and load with dynamic
+  `import()` the first time `uiLang`/`prayerLang`/`mysteryLang` needs one
+  (`ensureLanguageLoaded` in Translations.jsx). `LanguageMenu`'s picker lists
+  all 12 from a small static `LANGUAGE_LIST` manifest so it doesn't need
+  every language's data loaded just to show the choices.
+  **Non-obvious gotcha hit while building this**, worth remembering: several
+  components (`CommandBar`, `MysteryHeader`, `PrayerMethodSection`, …) are
+  wrapped in `React.memo` and read `TRANSLATIONS[lang]` directly. A newly
+  finished language load mutates that shared object *without changing any of
+  their own props*, so memo correctly (from its own narrow view) skips
+  re-rendering them and they stay stuck on the English fallback forever. Fixed
+  by threading a `translationsVersion` counter down as an extra prop (bumped
+  once a load resolves) into every one of them — an otherwise-unused prop is
+  enough to make memo's shallow comparison see a change. If a new component
+  ever reads `TRANSLATIONS[someLang]` directly, it needs this prop too, or it
+  will silently show English forever once loaded stops meaning "just now."
+- ~~Montfort content (Methods 4/5 ≈ 35 KB source) loads even for the standard
+  Rosary~~ — Fixed: `MontfortMethods.jsx`'s `ensureMethodContentLoaded` lazily
+  `import()`s Method4Content/Method5Content only once the user actually picks
+  that method (Method 1/2/3 stay static — too small, ~6 KB together, to
+  bother). Same `*Version`-counter-as-a-prop pattern as above, but simpler
+  here: the resolved `meditationBlock` already flows through a prop that
+  genuinely changes reference each time, so no extra prop was needed beyond
+  the version counter driving the `useMemo` that builds it.
 
 ## PWA / hosting checklist
 
@@ -202,6 +250,6 @@ de vos entrailles"; Japanese reads "御子イエス".
    above).
 2. PWA + deploy (so the owner has an installable app early).
 3. **Done** — Bug fixes above.
-4. Optimizations above.
+4. **Done** — Optimizations above.
 5. Montfort restructure (plumbing only), then real content from the owner,
    then translations.

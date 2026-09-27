@@ -12,7 +12,7 @@ function NavMenu({
   PRAYER_SEQUENCE,
   accentColor = '#3b82f6',
 }) {
-  const uiText = TRANSLATIONS[uiLang].ui;
+  const uiText = TRANSLATIONS[uiLang]?.ui || TRANSLATIONS.en.ui;
   const mysteries = getTranslatedMysteries(uiLang);
 
   const mystery = mysteries[currentMystery];

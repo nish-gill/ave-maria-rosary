@@ -1,24 +1,24 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import PrayerDisplay from '../components/rosary/PrayerDisplay';
 import ProgressIndicator from '../components/rosary/ProgressIndicator';
 import MysteryHeader from '../components/rosary/MysteryHeader';
-import { ACCENT_THEMES } from '../components/rosary/SettingsMenu';
+import { ACCENT_THEMES } from '../components/rosary/themes';
 import TutorialHints from '../components/rosary/TutorialHints';
 const NavMenu = lazy(() => import('../components/rosary/NavMenu'));
 const LanguageMenu = lazy(() => import('../components/rosary/LanguageMenu'));
 const SettingsMenu = lazy(() => import('../components/rosary/SettingsMenu'));
 import CommandBar from '../components/rosary/CommandBar';
 import ZenButton from '../components/rosary/ZenButton';
-import { resolveMeditation } from '../components/rosary/meditation/MontfortMethods';
+import { resolveMeditation, ensureMethodContentLoaded } from '../components/rosary/meditation/MontfortMethods';
 import { generatePrayerSequence, getMysteryForDay, idToUrl, parseUrlId } from '../components/rosary/RosaryData';
-import { TRANSLATIONS } from '../components/rosary/Translations';
+import { TRANSLATIONS, LANGUAGE_LIST, ensureLanguageLoaded } from '../components/rosary/Translations';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
 const detectBrowserLanguage = () => {
   const browserLang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
-  return TRANSLATIONS[browserLang] ? browserLang : 'en';
+  return LANGUAGE_LIST.some(l => l.code === browserLang) ? browserLang : 'en';
 };
 
 const detectDarkModePreference = () =>
@@ -106,11 +106,42 @@ export default function Rosary() {
     tutorialSeen,
   ]);
 
+  // Non-English translations load on demand (see Translations.jsx) rather
+  // than all shipping up front. Everything that reads TRANSLATIONS[lang]
+  // already falls back to English while a language is still loading; this
+  // just kicks off the load whenever one of the three language settings
+  // points at a language that isn't in memory yet, and forces a re-render
+  // once it arrives so the fallback gets replaced with the real text.
+  const [translationsVersion, bumpTranslationsVersion] = useReducer(v => v + 1, 0);
+  useEffect(() => {
+    let cancelled = false;
+    ensureLanguageLoaded(uiLang).then(() => { if (!cancelled) bumpTranslationsVersion(); });
+    return () => { cancelled = true; };
+  }, [uiLang]);
+  useEffect(() => {
+    let cancelled = false;
+    ensureLanguageLoaded(prayerLang).then(() => { if (!cancelled) bumpTranslationsVersion(); });
+    return () => { cancelled = true; };
+  }, [prayerLang]);
+  useEffect(() => {
+    let cancelled = false;
+    ensureLanguageLoaded(mysteryLang).then(() => { if (!cancelled) bumpTranslationsVersion(); });
+    return () => { cancelled = true; };
+  }, [mysteryLang]);
+
   // Build prayer sequence. When languages change we rebuild but preserve position
   // by mapping the current prayer type/decade/hailMaryNumber to the new sequence.
   const prevPrayerRef = useRef(null);
 
-  const PRAYER_SEQUENCE = useMemo(() => generatePrayerSequence(prayerLang, uiLang), [prayerLang, uiLang]);
+  const PRAYER_SEQUENCE = useMemo(
+    () => generatePrayerSequence(prayerLang, uiLang),
+    // translationsVersion isn't read directly, but a newly-loaded language
+    // mutates TRANSLATIONS in place — this dependency forces the sequence to
+    // rebuild with the real text once that happens (see ensureLanguageLoaded
+    // above), instead of staying stuck on whatever was available synchronously.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [prayerLang, uiLang, translationsVersion]
+  );
 
   // Map of permanent prayer id -> sequence index for O(1) URL restoration
   const idToIndex = useMemo(() => {
@@ -331,16 +362,30 @@ export default function Rosary() {
     setTutorialSeen(true);
   }, []);
 
-  const uiText = TRANSLATIONS[uiLang].ui;
+  const uiText = TRANSLATIONS[uiLang]?.ui || TRANSLATIONS.en.ui;
   const accentThemeObj = ACCENT_THEMES.find(t => t.id === accentTheme);
   const accentColor = (isDarkMode && accentThemeObj?.darkColor) ? accentThemeObj.darkColor : (accentThemeObj?.color || '#3b82f6');
+
+  // Methods 4 and 5's content (~35 KB combined) loads on demand rather than
+  // always — see ensureMethodContentLoaded. This mirrors the translations
+  // loading above: kick off the load whenever the selected method needs it,
+  // and force a recompute once it arrives.
+  const [methodContentVersion, bumpMethodContentVersion] = useReducer(v => v + 1, 0);
+  useEffect(() => {
+    let cancelled = false;
+    ensureMethodContentLoaded(meditationMethod).then(() => { if (!cancelled) bumpMethodContentVersion(); });
+    return () => { cancelled = true; };
+  }, [meditationMethod]);
 
   // Resolve the Montfort meditation augmentation for the current prayer.
   // The Rosary sequence and permanent IDs are untouched; this only adds a
   // content layer (phrase + inline block) for the selected method.
   const { phrase: hmPhrase, block: meditationBlock } = useMemo(
     () => resolveMeditation(meditationMethod, currentPrayer, currentMystery),
-    [meditationMethod, currentPrayer, currentMystery]
+    // methodContentVersion isn't read directly, but it forces this to
+    // recompute once Method 4/5's lazily-loaded content module arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [meditationMethod, currentPrayer, currentMystery, methodContentVersion]
   );
 
   // The inline Prayer Method selector appears near the beginning (first
@@ -378,6 +423,7 @@ export default function Rosary() {
         animationSpeed={animationSpeed}
         fontSize={fontSize}
         accentColor={accentColor}
+        translationsVersion={translationsVersion}
       />
 
       <ProgressIndicator
@@ -388,6 +434,7 @@ export default function Rosary() {
         controlsVisible={controlsVisible}
         animationsEnabled={animationsEnabled}
         animationSpeed={animationSpeed}
+        translationsVersion={translationsVersion}
       />
 
       <main role="main" aria-label="Prayer text">
@@ -408,6 +455,7 @@ export default function Rosary() {
           meditationMethod={meditationMethod}
           onSelectMeditation={selectMeditation}
           meditationBlock={meditationBlock}
+          translationsVersion={translationsVersion}
         />
       </main>
 
@@ -445,6 +493,7 @@ export default function Rosary() {
         animationsEnabled={animationsEnabled}
         animationSpeed={animationSpeed}
         accentColor={accentColor}
+        translationsVersion={translationsVersion}
       />
 
       {navLoaded && (
@@ -461,6 +510,7 @@ export default function Rosary() {
             uiLang={uiLang}
             PRAYER_SEQUENCE={PRAYER_SEQUENCE}
             accentColor={accentColor}
+            translationsVersion={translationsVersion}
           />
         </Suspense>
       )}
@@ -477,6 +527,7 @@ export default function Rosary() {
             setPrayerLang={setPrayerLang}
             mysteryLang={mysteryLang}
             setMysteryLang={setMysteryLang}
+            translationsVersion={translationsVersion}
           />
         </Suspense>
       )}
@@ -503,6 +554,7 @@ export default function Rosary() {
             setZenButtonVisible={setZenButtonVisible}
             zenMode={zenMode}
             setZenMode={setZenMode}
+            translationsVersion={translationsVersion}
           />
         </Suspense>
       )}
