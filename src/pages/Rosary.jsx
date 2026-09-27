@@ -1,0 +1,497 @@
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { motion } from 'framer-motion';
+import PrayerDisplay from '../components/rosary/PrayerDisplay';
+import ProgressIndicator from '../components/rosary/ProgressIndicator';
+import MysteryHeader from '../components/rosary/MysteryHeader';
+import { ACCENT_THEMES } from '../components/rosary/SettingsMenu';
+import TutorialHints from '../components/rosary/TutorialHints';
+const NavMenu = lazy(() => import('../components/rosary/NavMenu'));
+const LanguageMenu = lazy(() => import('../components/rosary/LanguageMenu'));
+const SettingsMenu = lazy(() => import('../components/rosary/SettingsMenu'));
+import CommandBar from '../components/rosary/CommandBar';
+import ZenButton from '../components/rosary/ZenButton';
+import { resolveMeditation } from '../components/rosary/meditation/MontfortMethods';
+import MeditationBlock from '../components/rosary/meditation/MeditationBlock';
+import PrayerMethodSection from '../components/rosary/meditation/PrayerMethodSection';
+import { generatePrayerSequence, getMysteryForDay, idToUrl, parseUrlId } from '../components/rosary/RosaryData';
+import { TRANSLATIONS } from '../components/rosary/Translations';
+
+const detectBrowserLanguage = () => {
+  const browserLang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
+  return TRANSLATIONS[browserLang] ? browserLang : 'en';
+};
+
+const detectDarkModePreference = () =>
+  window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+
+export default function Rosary() {
+  const [uiLang, setUiLang] = useState(detectBrowserLanguage);
+  const [prayerLang, setPrayerLang] = useState(detectBrowserLanguage);
+  const [mysteryLang, setMysteryLang] = useState(detectBrowserLanguage);
+  const [currentMystery, setCurrentMystery] = useState(() => {
+    const parsed = parseUrlId(window.location.hash.replace('#', ''));
+    if (parsed?.mysterySet) return parsed.mysterySet;
+    try {
+      const saved = localStorage.getItem('rosaryProgress');
+      if (saved) {
+        const { urlId } = JSON.parse(saved);
+        const p = parseUrlId(urlId);
+        if (p?.mysterySet) return p.mysterySet;
+      }
+    } catch (e) {}
+    return getMysteryForDay();
+  });
+  const [isDarkMode, setIsDarkMode] = useState(detectDarkModePreference);
+  const [isHighContrast, setIsHighContrast] = useState(false);
+  const [fontSize, setFontSize] = useState(18);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
+  const [animationSpeed, setAnimationSpeed] = useState(1.0);
+  const [accentTheme, setAccentTheme] = useState('blue');
+  const [zenButtonVisible, setZenButtonVisible] = useState(false);
+  const [zenMode, setZenMode] = useState('tap');
+
+  const [navOpen, setNavOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(true);
+  const [navLoaded, setNavLoaded] = useState(false);
+  const [langLoaded, setLangLoaded] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // St. Louis de Montfort's Five Methods. Persists the chosen method in
+  // localStorage; changing it never resets the current prayer position.
+  const [meditationMethod, setMeditationMethod] = useState(() => {
+    try { return localStorage.getItem('rosaryMeditation') || 'none'; } catch (e) { return 'none'; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('rosaryMeditation', meditationMethod); } catch (e) {}
+  }, [meditationMethod]);
+
+  const selectMeditation = useCallback((id) => setMeditationMethod(id), []);
+
+  // Build prayer sequence. When languages change we rebuild but preserve position
+  // by mapping the current prayer type/decade/hailMaryNumber to the new sequence.
+  const prevPrayerRef = useRef(null);
+
+  const PRAYER_SEQUENCE = useMemo(() => generatePrayerSequence(prayerLang, uiLang), [prayerLang, uiLang]);
+
+  // Map of permanent prayer id -> sequence index for O(1) URL restoration
+  const idToIndex = useMemo(() => {
+    const map = {};
+    PRAYER_SEQUENCE.forEach((p, i) => { if (p.id) map[p.id] = i; });
+    return map;
+  }, [PRAYER_SEQUENCE]);
+
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const parsed = parseUrlId(window.location.hash.replace('#', ''));
+    if (parsed && idToIndex[parsed.id] !== undefined) return idToIndex[parsed.id];
+    try {
+      const saved = localStorage.getItem('rosaryProgress');
+      if (saved) {
+        const { urlId } = JSON.parse(saved);
+        const p = parseUrlId(urlId);
+        if (p && idToIndex[p.id] !== undefined) return idToIndex[p.id];
+      }
+    } catch (e) {}
+    return 0;
+  });
+
+  const currentPrayer = PRAYER_SEQUENCE[currentIndex];
+
+  // Preserve position when language changes: find the equivalent prayer in the new sequence
+  useEffect(() => {
+    const prev = prevPrayerRef.current;
+    if (!prev) {
+      prevPrayerRef.current = PRAYER_SEQUENCE[currentIndex];
+      return;
+    }
+    // Try to find a prayer of the same type, decade, and hailMaryNumber in the new sequence
+    const matched = PRAYER_SEQUENCE.findIndex(p =>
+      p.type === prev.type &&
+      (p.decade === prev.decade || (!p.decade && !prev.decade)) &&
+      (p.hailMaryNumber === prev.hailMaryNumber || (!p.hailMaryNumber && !prev.hailMaryNumber)) &&
+      (p.isIntroductory === prev.isIntroductory)
+    );
+    if (matched !== -1) {
+      setCurrentIndex(matched);
+    }
+    prevPrayerRef.current = PRAYER_SEQUENCE[matched !== -1 ? matched : currentIndex];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [PRAYER_SEQUENCE]);
+
+  // Update ref whenever currentIndex changes normally (not from language switch)
+  useEffect(() => {
+    prevPrayerRef.current = PRAYER_SEQUENCE[currentIndex];
+  }, [currentIndex, PRAYER_SEQUENCE]);
+
+  // Guards to prevent duplicate history entries and spurious resets
+  const skipResetRef = useRef(false);
+  const firstMysteryRunRef = useRef(true);
+  const isFirstUrlSyncRef = useRef(true);
+
+  // Reset only when the user explicitly changes mystery (skip mount + URL-driven changes)
+  const handleReset = useCallback(() => {
+    setCurrentIndex(0);
+    prevPrayerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (firstMysteryRunRef.current) { firstMysteryRunRef.current = false; return; }
+    if (skipResetRef.current) { skipResetRef.current = false; return; }
+    handleReset();
+  }, [currentMystery, handleReset]);
+
+  // State -> URL: set the hash only once (initial load / restore).
+  // No further history entries are pushed as the user prays, so the URL
+  // stays anchored to the starting prayer.
+  useEffect(() => {
+    if (!isFirstUrlSyncRef.current) return;
+    const prayer = PRAYER_SEQUENCE[currentIndex];
+    if (!prayer?.id) return;
+    const urlId = idToUrl(prayer.id, currentMystery);
+    const expectedHash = `#${urlId}`;
+    if (window.location.hash !== expectedHash) {
+      window.history.replaceState(null, '', expectedHash);
+    }
+    isFirstUrlSyncRef.current = false;
+  }, [currentIndex, currentMystery, PRAYER_SEQUENCE]);
+
+  // Persist current prayer to localStorage for sessions without a URL hash
+  useEffect(() => {
+    const prayer = PRAYER_SEQUENCE[currentIndex];
+    if (!prayer?.id) return;
+    const urlId = idToUrl(prayer.id, currentMystery);
+    try { localStorage.setItem('rosaryProgress', JSON.stringify({ urlId })); } catch (e) {}
+  }, [currentIndex, currentMystery, PRAYER_SEQUENCE]);
+
+  // Browser Back/Forward: URL -> State
+  useEffect(() => {
+    const handlePopState = () => {
+      const parsed = parseUrlId(window.location.hash.replace('#', ''));
+      if (parsed && idToIndex[parsed.id] !== undefined) {
+        if (parsed.mysterySet && parsed.mysterySet !== currentMystery) {
+          skipResetRef.current = true;
+          setCurrentMystery(parsed.mysterySet);
+        }
+        setCurrentIndex(idToIndex[parsed.id]);
+        prevPrayerRef.current = PRAYER_SEQUENCE[idToIndex[parsed.id]];
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [idToIndex, PRAYER_SEQUENCE, currentMystery]);
+
+  // Toggle body class to disable dialog CSS animations
+  useEffect(() => {
+    document.body.classList.toggle('no-animations', !animationsEnabled);
+    return () => document.body.classList.remove('no-animations');
+  }, [animationsEnabled]);
+
+  // System dark mode listener
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e) => setIsDarkMode(e.matches);
+    mq.addEventListener?.('change', handler) ?? mq.addListener?.(handler);
+    return () => mq.removeEventListener?.('change', handler) ?? mq.removeListener?.(handler);
+  }, []);
+
+  const isFirst = currentIndex === 0;
+  const isLast = currentIndex === PRAYER_SEQUENCE.length - 1;
+
+  const handleNext = useCallback(() => {
+    setCurrentIndex(prev => Math.min(prev + 1, PRAYER_SEQUENCE.length - 1));
+  }, [PRAYER_SEQUENCE.length]);
+
+  const handlePrevious = useCallback(() => {
+    setCurrentIndex(prev => Math.max(prev - 1, 0));
+  }, []);
+
+  const handleJumpTo = useCallback((index) => {
+    setCurrentIndex(index);
+    prevPrayerRef.current = PRAYER_SEQUENCE[index];
+    setNavOpen(false);
+  }, [PRAYER_SEQUENCE]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); handleNext(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); handlePrevious(); }
+      else if (e.key === 'r' || e.key === 'R') handleReset();
+      else if (e.key === 'd' || e.key === 'D') setIsDarkMode(p => !p);
+      else if (e.key === 'h' || e.key === 'H') setControlsVisible(p => !p);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleNext, handlePrevious, handleReset]);
+
+  // Touch: swipe + double-tap
+  const lastTapRef = useRef(0);
+  const tapTimerRef = useRef(null);
+
+  useEffect(() => {
+    let startX = 0, startY = 0;
+
+    const onTouchStart = (e) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    };
+
+    const onTouchEnd = (e) => {
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const deltaX = startX - endX;
+      const deltaY = startY - endY;
+
+      // Swipe
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+        deltaX > 0 ? handleNext() : handlePrevious();
+        return;
+      }
+
+      // Double-tap anywhere on screen
+      if (Math.abs(deltaX) < 15 && Math.abs(deltaY) < 15) {
+        const now = Date.now();
+        if (now - lastTapRef.current < 350) {
+          clearTimeout(tapTimerRef.current);
+          setControlsVisible(prev => !prev);
+          lastTapRef.current = 0;
+        } else {
+          lastTapRef.current = now;
+        }
+      }
+    };
+
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [handleNext, handlePrevious]);
+
+  const openNav = useCallback(() => { setNavOpen(true); setNavLoaded(true); }, []);
+  const closeNav = useCallback(() => setNavOpen(false), []);
+  const openLang = useCallback(() => { setLangOpen(true); setLangLoaded(true); }, []);
+  const closeLang = useCallback(() => setLangOpen(false), []);
+  const openSettings = useCallback(() => { setSettingsOpen(true); setSettingsLoaded(true); }, []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const openTutorial = useCallback(() => setTutorialOpen(true), []);
+  const closeTutorial = useCallback(() => {
+    setTutorialOpen(false);
+    setControlsVisible(true);
+  }, []);
+
+  const uiText = TRANSLATIONS[uiLang].ui;
+  const accentThemeObj = ACCENT_THEMES.find(t => t.id === accentTheme);
+  const accentColor = (isDarkMode && accentThemeObj?.darkColor) ? accentThemeObj.darkColor : (accentThemeObj?.color || '#3b82f6');
+
+  // Resolve the Montfort meditation augmentation for the current prayer.
+  // The Rosary sequence and permanent IDs are untouched; this only adds a
+  // content layer (phrase + inline block) for the selected method.
+  const { phrase: hmPhrase, block: meditationBlock } = useMemo(
+    () => resolveMeditation(meditationMethod, currentPrayer, currentMystery),
+    [meditationMethod, currentPrayer, currentMystery]
+  );
+
+  // The inline Prayer Method selector appears near the beginning (first
+  // screen) and near the mystery context (each decade announcement), so
+  // the user can change method mid-Rosary without losing position.
+  const showMethodSection = isFirst || currentPrayer?.type === 'mystery_announcement';
+  const methodSectionNode = showMethodSection ? (
+    <PrayerMethodSection
+      method={meditationMethod}
+      onSelect={selectMeditation}
+      isDarkMode={isDarkMode}
+      uiLang={uiLang}
+      accentColor={accentColor}
+      fontSize={fontSize}
+    />
+  ) : null;
+
+  const meditationNode = meditationBlock ? (
+    <MeditationBlock
+      block={meditationBlock}
+      isDarkMode={isDarkMode}
+      uiLang={uiLang}
+      fontSize={fontSize}
+      animationsEnabled={animationsEnabled}
+      animationSpeed={animationSpeed}
+      accentColor={accentColor}
+    />
+  ) : null;
+
+  // High contrast overrides prayer display background / text
+  const contrastClass = isHighContrast
+    ? isDarkMode
+      ? 'hc-dark'
+      : 'hc-light'
+    : '';
+
+  return (
+    <div
+      className={`relative ${isDarkMode ? 'dark' : ''} ${contrastClass}`}
+      style={isHighContrast ? {
+        '--hc-bg': isDarkMode ? '#000000' : '#ffffff',
+        '--hc-fg': isDarkMode ? '#ffffff' : '#000000',
+      } : {}}
+    >
+      <MysteryHeader
+        currentMystery={currentMystery}
+        currentPrayer={currentPrayer}
+        isDarkMode={isDarkMode}
+        isHighContrast={isHighContrast}
+        language={uiLang}
+        onClick={openNav}
+        controlsVisible={controlsVisible}
+        animationsEnabled={animationsEnabled}
+        animationSpeed={animationSpeed}
+        fontSize={fontSize}
+        accentColor={accentColor}
+      />
+
+      <ProgressIndicator
+        currentPrayer={currentPrayer}
+        isDarkMode={isDarkMode}
+        language={uiLang}
+        onOpenNav={openNav}
+        controlsVisible={controlsVisible}
+        animationsEnabled={animationsEnabled}
+        animationSpeed={animationSpeed}
+      />
+
+      <main role="main" aria-label="Prayer text">
+        <PrayerDisplay
+          currentPrayer={currentPrayer}
+          currentMystery={currentMystery}
+          isDarkMode={isDarkMode}
+          isHighContrast={isHighContrast}
+          language={uiLang}
+          mysteryLang={mysteryLang}
+          fontSize={fontSize}
+          animationsEnabled={animationsEnabled}
+          animationSpeed={animationSpeed}
+          accentColor={accentColor}
+          prayerLang={prayerLang}
+          hailMaryPhrase={hmPhrase}
+          methodSection={methodSectionNode}
+          meditation={meditationNode}
+        />
+      </main>
+
+      <TutorialHints
+        isDarkMode={isDarkMode}
+        uiLang={uiLang}
+        visible={tutorialOpen}
+        animationsEnabled={animationsEnabled}
+        onClose={closeTutorial}
+      />
+
+      {zenButtonVisible && (
+        <ZenButton
+          controlsVisible={controlsVisible}
+          setControlsVisible={setControlsVisible}
+          isDarkMode={isDarkMode}
+          isHighContrast={isHighContrast}
+          accentColor={accentColor}
+          zenMode={zenMode}
+        />
+      )}
+
+      <CommandBar
+        isDarkMode={isDarkMode}
+        onPrevious={handlePrevious}
+        onNext={handleNext}
+        onOpenNav={openNav}
+        onOpenLanguage={openLang}
+        onOpenSettings={openSettings}
+        onOpenTutorial={openTutorial}
+        visible={controlsVisible}
+        isFirst={isFirst}
+        isLast={isLast}
+        uiLang={uiLang}
+        animationsEnabled={animationsEnabled}
+        animationSpeed={animationSpeed}
+        accentColor={accentColor}
+      />
+
+      {navLoaded && (
+        <Suspense fallback={null}>
+          <NavMenu
+            isOpen={navOpen}
+            onClose={closeNav}
+            onJumpTo={handleJumpTo}
+            onReset={handleReset}
+            currentMystery={currentMystery}
+            setCurrentMystery={setCurrentMystery}
+            currentIndex={currentIndex}
+            isDarkMode={isDarkMode}
+            uiLang={uiLang}
+            PRAYER_SEQUENCE={PRAYER_SEQUENCE}
+            accentColor={accentColor}
+          />
+        </Suspense>
+      )}
+
+      {langLoaded && (
+        <Suspense fallback={null}>
+          <LanguageMenu
+            isOpen={langOpen}
+            onClose={closeLang}
+            isDarkMode={isDarkMode}
+            uiLang={uiLang}
+            setUiLang={setUiLang}
+            prayerLang={prayerLang}
+            setPrayerLang={setPrayerLang}
+            mysteryLang={mysteryLang}
+            setMysteryLang={setMysteryLang}
+          />
+        </Suspense>
+      )}
+
+      {settingsLoaded && (
+        <Suspense fallback={null}>
+          <SettingsMenu
+            isOpen={settingsOpen}
+            onClose={closeSettings}
+            isDarkMode={isDarkMode}
+            setIsDarkMode={setIsDarkMode}
+            isHighContrast={isHighContrast}
+            setIsHighContrast={setIsHighContrast}
+            fontSize={fontSize}
+            setFontSize={setFontSize}
+            uiLang={uiLang}
+            animationsEnabled={animationsEnabled}
+            setAnimationsEnabled={setAnimationsEnabled}
+            animationSpeed={animationSpeed}
+            setAnimationSpeed={setAnimationSpeed}
+            accentTheme={accentTheme}
+            setAccentTheme={setAccentTheme}
+            zenButtonVisible={zenButtonVisible}
+            setZenButtonVisible={setZenButtonVisible}
+            zenMode={zenMode}
+            setZenMode={setZenMode}
+          />
+        </Suspense>
+      )}
+
+      {isLast && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-28 left-0 right-0 text-center pointer-events-none"
+          aria-live="polite"
+        >
+          <div className="text-lg font-medium" style={{ color: accentColor }}>
+            {uiText.rosaryComplete}
+          </div>
+          <div className={`text-sm mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            {uiText.blessing}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
