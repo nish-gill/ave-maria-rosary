@@ -173,12 +173,32 @@ KB / 132.88 KB gzip** (≈29% smaller gzipped) over the course of these three:
 
 ## PWA / hosting checklist
 
-- Add `vite-plugin-pwa` (manifest + service worker precaching all assets so the
-  app works fully offline). Needs icons (192, 512, maskable, apple-touch). The
-  old favicon was hosted on Base44 storage — ask the owner for an image or make
-  a simple one.
-- iPhone users must use Safari → Share → Add to Home Screen; add a small
-  "How to install" hint.
+- **Done (2026-09-27)** — Added `vite-plugin-pwa` (`registerType: 'autoUpdate'`,
+  configured in [vite.config.js](vite.config.js)). Build output now includes
+  `manifest.webmanifest`, `sw.js`, and `workbox-*.js`; the service worker
+  precaches all 26 built files (~688 KB) — every language chunk and both
+  Montfort method chunks included, so switching language/method works
+  offline once installed, even though they load on demand over the network.
+  Icons made from scratch (no source image existed — the old favicon was on
+  Base44 storage): a simple white Latin cross on the app's blue accent
+  (`#3b82f6`), generated at `public/icon-192.png`, `icon-512.png`,
+  `icon-maskable-512.png` (smaller cross, safe-zone padding for Android's
+  adaptive-icon mask), and `apple-touch-icon.png`. Swap these for real
+  branding whenever the owner wants something more considered — they're
+  intentionally simple per "make a simple one" above.
+  **Not fully verified**: the sandboxed browser used to test this session
+  fetches `/sw.js` fine but fails to *register* it ("unknown error") — looks
+  like service workers are restricted in that specific embedded browser, not
+  a bug in the config (manifest, icons, and build output all check out
+  correctly against a mature, standard plugin). Confirm installability for
+  real once deployed, or by running `npm run preview` and opening it in an
+  actual browser — DevTools → Application → Service Workers should show it
+  active, and Chrome/Edge should offer an install icon in the address bar.
+- **Done (2026-09-27)** — iPhone users get a small dismissible banner
+  ([InstallHint.jsx](src/components/rosary/InstallHint.jsx)) pointing them to
+  Share → Add to Home Screen, shown only on iOS Safari (not Chrome-on-iOS,
+  not once already installed), after the first-run tutorial, until dismissed
+  once (persisted like `tutorialSeen`).
 - Deploy: Cloudflare Pages or Netlify, build command `npm run build`, output
   `dist`. The owner connects the host to GitHub themselves.
 
@@ -248,7 +268,8 @@ de vos entrailles"; Japanese reads "御子イエス".
 
 1. **Done** — Install, build, run; compare with the live Base44 app (see note
    above).
-2. PWA + deploy (so the owner has an installable app early).
+2. **PWA done, deploy still pending** — the app is installable (see PWA
+   checklist above); the owner still needs to connect a host to this repo.
 3. **Done** — Bug fixes above.
 4. **Done** — Optimizations above.
 5. Montfort restructure (plumbing only), then real content from the owner,

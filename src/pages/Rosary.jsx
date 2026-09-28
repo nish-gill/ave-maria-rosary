@@ -5,6 +5,7 @@ import ProgressIndicator from '../components/rosary/ProgressIndicator';
 import MysteryHeader from '../components/rosary/MysteryHeader';
 import { ACCENT_THEMES } from '../components/rosary/themes';
 import TutorialHints from '../components/rosary/TutorialHints';
+import InstallHint, { shouldShowInstallHint } from '../components/rosary/InstallHint';
 const NavMenu = lazy(() => import('../components/rosary/NavMenu'));
 const LanguageMenu = lazy(() => import('../components/rosary/LanguageMenu'));
 const SettingsMenu = lazy(() => import('../components/rosary/SettingsMenu'));
@@ -71,6 +72,9 @@ export default function Rosary() {
   // The first-run tutorial opens automatically only until it's been seen once.
   const [tutorialSeen, setTutorialSeen] = useState(() => !!savedSettings.tutorialSeen);
   const [tutorialOpen, setTutorialOpen] = useState(() => !savedSettings.tutorialSeen);
+  // iOS Safari has no native "install" prompt; this fills that gap (see
+  // InstallHint.jsx) but only until the visitor dismisses it once.
+  const [installHintDismissed, setInstallHintDismissed] = useState(() => !!savedSettings.installHintDismissed);
   const [navLoaded, setNavLoaded] = useState(false);
   const [langLoaded, setLangLoaded] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -96,6 +100,7 @@ export default function Rosary() {
         animationsEnabled, animationSpeed, accentTheme,
         zenButtonVisible, zenMode,
         tutorialSeen,
+        installHintDismissed,
       }));
     } catch (e) {}
   }, [
@@ -104,6 +109,7 @@ export default function Rosary() {
     animationsEnabled, animationSpeed, accentTheme,
     zenButtonVisible, zenMode,
     tutorialSeen,
+    installHintDismissed,
   ]);
 
   // Non-English translations load on demand (see Translations.jsx) rather
@@ -361,6 +367,10 @@ export default function Rosary() {
     setControlsVisible(true);
     setTutorialSeen(true);
   }, []);
+  const dismissInstallHint = useCallback(() => setInstallHintDismissed(true), []);
+  // Only ever true on iOS Safari, and only computed once — it can't change
+  // for the life of the page (the device/browser don't change mid-session).
+  const [showInstallHint] = useState(shouldShowInstallHint);
 
   const uiText = TRANSLATIONS[uiLang]?.ui || TRANSLATIONS.en.ui;
   const accentThemeObj = ACCENT_THEMES.find(t => t.id === accentTheme);
@@ -465,6 +475,15 @@ export default function Rosary() {
         visible={tutorialOpen}
         animationsEnabled={animationsEnabled}
         onClose={closeTutorial}
+      />
+
+      <InstallHint
+        isDarkMode={isDarkMode}
+        uiLang={uiLang}
+        visible={showInstallHint && !installHintDismissed && tutorialSeen}
+        animationsEnabled={animationsEnabled}
+        onDismiss={dismissInstallHint}
+        translationsVersion={translationsVersion}
       />
 
       {zenButtonVisible && (
