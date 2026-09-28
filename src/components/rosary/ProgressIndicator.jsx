@@ -12,7 +12,7 @@ function ProgressIndicator({
   animationsEnabled,
   animationSpeed
 }) {
-  const uiText = TRANSLATIONS[language].ui;
+  const uiText = TRANSLATIONS[language]?.ui || TRANSLATIONS.en.ui;
   const isTouch = useTouchScreen();
 
   // Sequential fade: track which panel is actually visible

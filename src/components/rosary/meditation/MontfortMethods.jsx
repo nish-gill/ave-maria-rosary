@@ -6,8 +6,33 @@
 
 import { getOffering, getPetition } from './Method1Content';
 import { getMysteryPhrase } from './Method2Content';
-import { getMethod4Meditation } from './Method4Content';
-import { getMethod5Motive, getMethod5DecadeSubject } from './Method5Content';
+
+// Method 4 and 5's content (~35 KB combined) only loads once the user
+// actually picks one of them — most visitors never do. Method 1/2/3 stay
+// statically imported above since they're small (~6 KB together) and not
+// worth the added complexity.
+const methodContentModules = {};
+const pendingMethodContent = {};
+const lazyLoaders = {
+  'montfort-4': () => import('./Method4Content'),
+  'montfort-5': () => import('./Method5Content'),
+};
+
+// Fetches a method's content module if needed. Safe to call repeatedly and
+// safe to call for a method with nothing to lazy-load (resolves to null).
+// Callers should re-run resolveMeditation() after this resolves — until
+// then, resolveMeditation() simply omits the block for that method.
+export function ensureMethodContentLoaded(methodId) {
+  if (methodContentModules[methodId] || !lazyLoaders[methodId]) {
+    return Promise.resolve(methodContentModules[methodId] || null);
+  }
+  if (!pendingMethodContent[methodId]) {
+    pendingMethodContent[methodId] = lazyLoaders[methodId]()
+      .then((mod) => { methodContentModules[methodId] = mod; return mod; })
+      .finally(() => { delete pendingMethodContent[methodId]; });
+  }
+  return pendingMethodContent[methodId];
+}
 
 export const MONTFORT_METHODS = [
   { id: 'none', nameKey: 'none', descKey: 'noneDesc', author: false },
@@ -63,37 +88,41 @@ export const resolveMeditation = (methodId, prayer, mysterySet) => {
       }
       break;
 
-    case 'montfort-4':
+    case 'montfort-4': {
+      const mod4 = methodContentModules['montfort-4'];
       if (prayer.type === 'mystery_announcement') {
         result.block = { type: 'offering', decade: prayer.decade, body: getOffering(mysterySet, prayer.decade) };
-      } else if (isDecadeHailMary(prayer)) {
+      } else if (isDecadeHailMary(prayer) && mod4) {
         result.block = {
           type: 'meditation',
           decade: prayer.decade,
           hailMaryNumber: prayer.hailMaryNumber,
-          body: getMethod4Meditation(mysterySet, prayer.decade, prayer.hailMaryNumber),
+          body: mod4.getMethod4Meditation(mysterySet, prayer.decade, prayer.hailMaryNumber),
         };
       } else if (prayer.type === 'glory_be' && prayer.decade) {
         result.block = { type: 'petition', decade: prayer.decade, body: getPetition(mysterySet, prayer.decade) };
       }
       break;
+    }
 
-    case 'montfort-5':
-      if (prayer.type === 'mystery_announcement') {
+    case 'montfort-5': {
+      const mod5 = methodContentModules['montfort-5'];
+      if (prayer.type === 'mystery_announcement' && mod5) {
         result.block = {
           type: 'decadeSubject',
           decade: prayer.decade,
-          body: getMethod5DecadeSubject(mysterySet, prayer.decade),
+          body: mod5.getMethod5DecadeSubject(mysterySet, prayer.decade),
         };
-      } else if (isDecadeHailMary(prayer)) {
+      } else if (isDecadeHailMary(prayer) && mod5) {
         result.block = {
           type: 'motive',
           decade: prayer.decade,
           hailMaryNumber: prayer.hailMaryNumber,
-          body: getMethod5Motive(mysterySet, prayer.decade, prayer.hailMaryNumber),
+          body: mod5.getMethod5Motive(mysterySet, prayer.decade, prayer.hailMaryNumber),
         };
       }
       break;
+    }
 
     default:
       break;

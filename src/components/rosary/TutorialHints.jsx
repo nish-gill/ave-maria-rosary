@@ -133,27 +133,9 @@ function TutorialHints({ isDarkMode, uiLang = 'en', visible, animationsEnabled =
 
   const isVisible = visible !== undefined ? visible : internalVisible;
   const handleClose = () => {
-    if (onClose) onClose();else
-    setInternalVisible(false);
-    requestAnimationFrame(() => {
-      try {
-        const badgeClose = document.getElementById('badge-close');
-        if (badgeClose) {
-          badgeClose.click();
-        } else {
-          const badge = document.getElementById('base44-edit-badge');
-          if (badge) {
-            const closeBtn = badge.querySelector('button, [role="button"]');
-            if (closeBtn) closeBtn.click();
-          }
-        }
-      } catch (e) {
-        // Badge unavailable — ignore silently
-      }
-    });
+    if (onClose) onClose();
+    else setInternalVisible(false);
   };
-
-
 
   useEffect(() => {
     const mq = window.matchMedia('(pointer: fine)');

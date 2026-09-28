@@ -19,7 +19,7 @@ function MysteryHeader({
 }) {
   const mysteries = getTranslatedMysteries(language);
   const mystery = mysteries[currentMystery];
-  const uiText = TRANSLATIONS[language].ui;
+  const uiText = TRANSLATIONS[language]?.ui || TRANSLATIONS.en.ui;
   const isTouch = useTouchScreen();
 
   const isInDecade = currentPrayer?.decade && currentPrayer.decade >= 1 && currentPrayer.decade <= 5;

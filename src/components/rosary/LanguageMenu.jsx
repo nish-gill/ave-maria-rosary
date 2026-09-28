@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { TRANSLATIONS } from './Translations';
+import { TRANSLATIONS, LANGUAGE_LIST } from './Translations';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function LanguageMenu({
@@ -10,7 +10,7 @@ function LanguageMenu({
   prayerLang, setPrayerLang,
   mysteryLang, setMysteryLang
 }) {
-  const uiText = TRANSLATIONS[uiLang].ui;
+  const uiText = TRANSLATIONS[uiLang]?.ui || TRANSLATIONS.en.ui;
 
   const bg = isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white';
   const labelClass = isDarkMode ? 'text-gray-200' : 'text-gray-800';
@@ -23,11 +23,13 @@ function LanguageMenu({
     ? 'text-gray-100 hover:bg-gray-800 hover:text-gray-100 focus:bg-gray-800 focus:text-gray-100'
     : 'text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900';
 
-  const langOptions = Object.entries(TRANSLATIONS).map(([key, value]) => {
-    const nativeName = value.name;
-    const translatedName = uiText.languageNames?.[key] || value.name;
+  // Built from the static LANGUAGE_LIST manifest (not from TRANSLATIONS
+  // directly) so all 12 choices show up even before their translation data
+  // has been loaded — only the language actually in use needs to be loaded.
+  const langOptions = LANGUAGE_LIST.map(({ code, name: nativeName }) => {
+    const translatedName = uiText.languageNames?.[code] || nativeName;
     const displayName = nativeName === translatedName ? nativeName : `${nativeName} — ${translatedName}`;
-    return { key, displayName };
+    return { key: code, displayName };
   });
 
   const renderLangSelect = (value, onChange, placeholder) => (

@@ -63,55 +63,142 @@ every prayer has a **permanent id** (`OPEN-SIGN`, `OPEN-CREED`, `OPEN-OF`,
 `CLOSE-FINAL`). In the URL the `D` becomes the mystery-set letter
 (`J`/`S`/`G`/`L`, e.g. `#J1-HM05`) via `idToUrl`/`parseUrlId`. Never replace
 these ids with array indexes. Progress is saved to localStorage
-(`rosaryProgress`), as is the method (`rosaryMeditation`). All text lives in
-`Translations.jsx` (~127 KB, all languages). The Montfort layer is
+(`rosaryProgress`), as is the method (`rosaryMeditation`) and every other
+setting (`rosarySettings`). All text lives under
+[translations/](src/components/rosary/translations/) (~127 KB total, one file
+per language, loaded on demand — see Optimizations below); `Translations.jsx`
+itself is now just the loader. The Montfort layer is
 `meditation/MontfortMethods.jsx` → `resolveMeditation(method, prayer, set)`
 returns `{ phrase, block }`; `PrayerMethodSection` is the inline selector,
-`MeditationBlock` renders a block.
+`MeditationBlock` renders a block. Methods 4/5's content files load on demand
+the same way (`ensureMethodContentLoaded`).
 
-## Known bugs (fix early)
+## Known bugs (fixed 2026-09-27, see git history)
 
-- Method 5 shows nothing on Hail Marys for the Luminous mysteries:
-  `getMethod5Motive` has no `luminous` offset (should be 15; motives 151–200
-  exist in the array).
-- Method UI strings (`ui.montfort`) exist only in English; Method 2/3 phrase
-  insertion only works when prayer language is English (other languages get an
-  English caption).
-- `PrayerMethodSection` ignores the animations setting (expand/collapse and
-  chevron always animate). The owner cares about this: disabling animations
-  must disable all of them.
-- `PrayerDisplay`'s `React.memo` is defeated: `Rosary.jsx` passes
-  `methodSection` / `meditation` as JSX created every render. Pass data props
-  and render inside `PrayerDisplay`.
-- Settings (dark mode, contrast, font size, accent, animations, speed, the three
-  languages, Zen button/mode) are not persisted; tutorial opens on every visit
-  (`tutorialOpen` starts `true`).
-- Pressing `R` resets the Rosary with no confirmation.
-- `TutorialHints.jsx` still contains code that clicks the Base44 badge's close
-  button; it is dead now and can be removed.
+All of the below are fixed. Kept here as a record of what changed and why.
+
+- ~~Method 5 shows nothing on Hail Marys for the Luminous mysteries~~ — Fixed:
+  `getMethod5Motive`'s `setOffset` was missing `luminous: 15`
+  ([Method5Content.jsx](src/components/rosary/meditation/Method5Content.jsx)).
+- ~~Method UI strings (`ui.montfort`) exist only in English~~ — Fixed: added
+  translated `montfort` blocks to all 11 other languages in
+  [Translations.jsx](src/components/rosary/Translations.jsx). Left alone on
+  purpose: Method 2/3's Hail-Mary phrase insertion still only works for
+  English prayer text — that phrase content itself is Base44-AI-invented
+  placeholder text (see "Five Methods" below), so translating the insertion
+  mechanism now would just multiply text that's getting replaced in the
+  Montfort restructure (work item 5). Non-English prayer languages still get
+  a visible italic caption fallback, which was already in place.
+- ~~`PrayerMethodSection` ignores the animations setting~~ — Fixed: it now
+  takes `animationsEnabled`/`animationSpeed` props and zeroes the
+  expand/collapse transition duration and the chevron's CSS transition when
+  animations are off, matching the pattern already used in
+  `MeditationBlock`/`CommandBar`.
+- ~~`PrayerDisplay`'s `React.memo` is defeated~~ — Fixed: `Rosary.jsx` now
+  passes data props (`showMethodSection`, `meditationMethod`,
+  `onSelectMeditation`, `meditationBlock`) instead of pre-built JSX;
+  `PrayerDisplay` renders `PrayerMethodSection`/`MeditationBlock` itself.
+- ~~Settings are not persisted; tutorial opens on every visit~~ — Fixed: all
+  of dark mode, contrast, font size, accent, animations, speed, the three
+  languages, and Zen button/mode now load from and save to one
+  `rosarySettings` localStorage key. The tutorial now only auto-opens until
+  it's been dismissed once (`tutorialSeen` in the same object).
+- ~~Pressing `R` resets the Rosary with no confirmation~~ — Fixed: `R` (and a
+  new "Reset Prayer" button in the nav menu, which reuses the `onReset` prop
+  and `resetPrayer` translation that already existed but were never wired to
+  anything visible) now opens a confirm dialog first.
+- ~~`TutorialHints.jsx` still contains code that clicks the Base44 badge's
+  close button~~ — Fixed: removed.
 - Previously reported and never confirmed fixed: the nav menu scrolling to the
-  current prayer when opened, and menus respecting "animations off". Re-test.
+  current prayer when opened, and menus respecting "animations off". Re-tested
+  2026-09-27 — both already worked correctly (nav menu: the `scrollIntoView`
+  effect in `NavMenu.jsx`; menus: the `body.no-animations [data-state]` CSS
+  rule already disables Radix dialog animations).
 
-## Optimizations (measured on the Base44 build)
+### More bugs found during a second pass (fixed 2026-09-27)
 
-- `ACCENT_THEMES` is imported from `SettingsMenu.jsx`, which pulls the whole
-  Settings menu into the main bundle and defeats its `lazy()` import. Move it to
-  its own file (e.g. `components/rosary/themes.js`).
-- All 12 languages load up front. Split `Translations.jsx` per language; keep
-  English bundled as fallback; load others with dynamic `import()`.
-- Montfort content (Methods 4/5 ≈ 35 KB source) loads even for the standard
-  Rosary; load per method on selection.
-- Base44's live main bundle was 681 KB raw / 231 KB gzipped; its badge script
-  (154 KB gzipped) is gone now that we host ourselves.
+- ~~`ZenButton` in "Instant Tap" mode does nothing on a touchscreen~~ — Fixed:
+  `startHold` returned early for tap mode *before* calling
+  `e.preventDefault()`, so a real tap fired both the touch events and the
+  browser's synthesized mousedown/mouseup/click afterward — `handleRelease`
+  ran twice, toggling `controlsVisible` on and back off. `preventDefault()`
+  now runs unconditionally, first thing in the handler.
+  ([ZenButton.jsx](src/components/rosary/ZenButton.jsx))
+- ~~`SettingsMenu`'s own toggle cards, accent swatches, and Zen switch always
+  animate~~ — Fixed: same class of bug as the `PrayerMethodSection` one above,
+  just in a different file — ironic since it's the very screen with the
+  "Animations" toggle on it. All gated on `animationsEnabled` now.
+- ~~`RosaryData.jsx`'s English-fallback data duplicates the same Scripture
+  verse for the Assumption and Coronation mysteries~~ — Fixed (cosmetic; this
+  fallback only runs if a language is somehow missing from `TRANSLATIONS`,
+  which shouldn't happen — every language already has its own `mysteries`).
+
+## Optimizations (done 2026-09-27)
+
+All three below are done. Base44's live main bundle was 681 KB raw / 231 KB
+gzipped, plus a 154 KB gzipped badge script gone now that we host ourselves;
+this build's own main chunk went from **563.84 KB / 188.19 KB gzip → 410.75
+KB / 132.88 KB gzip** (≈29% smaller gzipped) over the course of these three:
+
+- ~~`ACCENT_THEMES` import defeats `SettingsMenu`'s `lazy()`~~ — Fixed: moved
+  to [themes.js](src/components/rosary/themes.js); `SettingsMenu` now code-splits
+  into its own ~3 KB gzip chunk.
+- ~~All 12 languages load up front~~ — Fixed: `Translations.jsx` is now a
+  loader — English is bundled directly (the fallback everything already used
+  `?.ui || TRANSLATIONS.en.ui` for), the other 11 live under
+  [translations/](src/components/rosary/translations/) and load with dynamic
+  `import()` the first time `uiLang`/`prayerLang`/`mysteryLang` needs one
+  (`ensureLanguageLoaded` in Translations.jsx). `LanguageMenu`'s picker lists
+  all 12 from a small static `LANGUAGE_LIST` manifest so it doesn't need
+  every language's data loaded just to show the choices.
+  **Non-obvious gotcha hit while building this**, worth remembering: several
+  components (`CommandBar`, `MysteryHeader`, `PrayerMethodSection`, …) are
+  wrapped in `React.memo` and read `TRANSLATIONS[lang]` directly. A newly
+  finished language load mutates that shared object *without changing any of
+  their own props*, so memo correctly (from its own narrow view) skips
+  re-rendering them and they stay stuck on the English fallback forever. Fixed
+  by threading a `translationsVersion` counter down as an extra prop (bumped
+  once a load resolves) into every one of them — an otherwise-unused prop is
+  enough to make memo's shallow comparison see a change. If a new component
+  ever reads `TRANSLATIONS[someLang]` directly, it needs this prop too, or it
+  will silently show English forever once loaded stops meaning "just now."
+- ~~Montfort content (Methods 4/5 ≈ 35 KB source) loads even for the standard
+  Rosary~~ — Fixed: `MontfortMethods.jsx`'s `ensureMethodContentLoaded` lazily
+  `import()`s Method4Content/Method5Content only once the user actually picks
+  that method (Method 1/2/3 stay static — too small, ~6 KB together, to
+  bother). Same `*Version`-counter-as-a-prop pattern as above, but simpler
+  here: the resolved `meditationBlock` already flows through a prop that
+  genuinely changes reference each time, so no extra prop was needed beyond
+  the version counter driving the `useMemo` that builds it.
 
 ## PWA / hosting checklist
 
-- Add `vite-plugin-pwa` (manifest + service worker precaching all assets so the
-  app works fully offline). Needs icons (192, 512, maskable, apple-touch). The
-  old favicon was hosted on Base44 storage — ask the owner for an image or make
-  a simple one.
-- iPhone users must use Safari → Share → Add to Home Screen; add a small
-  "How to install" hint.
+- **Done (2026-09-27)** — Added `vite-plugin-pwa` (`registerType: 'autoUpdate'`,
+  configured in [vite.config.js](vite.config.js)). Build output now includes
+  `manifest.webmanifest`, `sw.js`, and `workbox-*.js`; the service worker
+  precaches all 26 built files (~688 KB) — every language chunk and both
+  Montfort method chunks included, so switching language/method works
+  offline once installed, even though they load on demand over the network.
+  Icons made from scratch (no source image existed — the old favicon was on
+  Base44 storage): a simple white Latin cross on the app's blue accent
+  (`#3b82f6`), generated at `public/icon-192.png`, `icon-512.png`,
+  `icon-maskable-512.png` (smaller cross, safe-zone padding for Android's
+  adaptive-icon mask), and `apple-touch-icon.png`. Swap these for real
+  branding whenever the owner wants something more considered — they're
+  intentionally simple per "make a simple one" above.
+  **Not fully verified**: the sandboxed browser used to test this session
+  fetches `/sw.js` fine but fails to *register* it ("unknown error") — looks
+  like service workers are restricted in that specific embedded browser, not
+  a bug in the config (manifest, icons, and build output all check out
+  correctly against a mature, standard plugin). Confirm installability for
+  real once deployed, or by running `npm run preview` and opening it in an
+  actual browser — DevTools → Application → Service Workers should show it
+  active, and Chrome/Edge should offer an install icon in the address bar.
+- **Done (2026-09-27)** — iPhone users get a small dismissible banner
+  ([InstallHint.jsx](src/components/rosary/InstallHint.jsx)) pointing them to
+  Share → Add to Home Screen, shown only on iOS Safari (not Chrome-on-iOS,
+  not once already installed), after the first-run tutorial, until dismissed
+  once (persisted like `tutorialSeen`).
 - Deploy: Cloudflare Pages or Netlify, build command `npm run build`, output
   `dist`. The owner connects the host to GitHub themselves.
 
@@ -181,8 +268,9 @@ de vos entrailles"; Japanese reads "御子イエス".
 
 1. **Done** — Install, build, run; compare with the live Base44 app (see note
    above).
-2. PWA + deploy (so the owner has an installable app early).
-3. Bug fixes above.
-4. Optimizations above.
+2. **PWA done, deploy still pending** — the app is installable (see PWA
+   checklist above); the owner still needs to connect a host to this repo.
+3. **Done** — Bug fixes above.
+4. **Done** — Optimizations above.
 5. Montfort restructure (plumbing only), then real content from the owner,
    then translations.

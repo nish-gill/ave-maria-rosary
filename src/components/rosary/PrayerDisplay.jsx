@@ -3,10 +3,12 @@ import { motion } from 'framer-motion';
 import { getTranslatedMysteries } from './RosaryData';
 import { TRANSLATIONS } from './Translations';
 import { insertPhraseIntoHailMary } from './meditation/Method2Content';
+import PrayerMethodSection from './meditation/PrayerMethodSection';
+import MeditationBlock from './meditation/MeditationBlock';
 
-function PrayerDisplay({ 
-  currentPrayer, 
-  currentMystery, 
+function PrayerDisplay({
+  currentPrayer,
+  currentMystery,
   isDarkMode,
   isHighContrast = false,
   language,
@@ -17,13 +19,16 @@ function PrayerDisplay({
   accentColor = '#3b82f6',
   prayerLang = 'en',
   hailMaryPhrase = null,
-  methodSection = null,
-  meditation = null,
+  showMethodSection = false,
+  meditationMethod = 'none',
+  onSelectMeditation,
+  meditationBlock = null,
+  translationsVersion,
 }) {
   const d = animationsEnabled ? (1 / (animationSpeed || 1)) : 0;
   const mysteries = getTranslatedMysteries(mysteryLang || language);
   const mystery = mysteries[currentMystery];
-  const uiText = TRANSLATIONS[language].ui;
+  const uiText = TRANSLATIONS[language]?.ui || TRANSLATIONS.en.ui;
 
   const hcBold = isHighContrast ? 'font-bold' : '';
 
@@ -174,7 +179,19 @@ function PrayerDisplay({
       }`}
     >
       <div className="w-full max-w-5xl mx-auto px-6 pt-32 pb-40">
-        {methodSection}
+        {showMethodSection && (
+          <PrayerMethodSection
+            method={meditationMethod}
+            onSelect={onSelectMeditation}
+            isDarkMode={isDarkMode}
+            uiLang={language}
+            accentColor={accentColor}
+            fontSize={fontSize}
+            animationsEnabled={animationsEnabled}
+            animationSpeed={animationSpeed}
+            translationsVersion={translationsVersion}
+          />
+        )}
         <motion.div
           key={`${language}-${currentPrayer.type}-${currentPrayer.decade}-${currentPrayer.hailMaryNumber}`}
           initial={animationsEnabled ? { opacity: 0, y: 20 } : false}
@@ -187,7 +204,18 @@ function PrayerDisplay({
             : renderPrayerText()
           }
         </motion.div>
-        {meditation}
+        {meditationBlock && (
+          <MeditationBlock
+            block={meditationBlock}
+            isDarkMode={isDarkMode}
+            uiLang={language}
+            fontSize={fontSize}
+            animationsEnabled={animationsEnabled}
+            animationSpeed={animationSpeed}
+            accentColor={accentColor}
+            translationsVersion={translationsVersion}
+          />
+        )}
       </div>
     </div>
   );

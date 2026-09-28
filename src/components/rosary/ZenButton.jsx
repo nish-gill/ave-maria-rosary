@@ -43,8 +43,14 @@ function ZenButton({
   };
 
   const startHold = (e) => {
+    // Prevent the browser from following a touchstart/touchend with a
+    // synthesized mousedown/mouseup/click — without this, a tap on a
+    // touchscreen fires handleRelease twice (once per input type), which
+    // toggles controlsVisible twice and makes the button look like it does
+    // nothing at all.
+    e.preventDefault();
     if (zenMode === 'tap') {
-      // do nothing on press; toggle happens on release
+      // do nothing else on press; toggle happens on release
       return;
     }
     // In hold mode, a short tap shows a hint
@@ -53,7 +59,6 @@ function ZenButton({
       if (performance.now() - tapStart < 300) showTapHint();
     };
     setTimeout(checkTap, 320);
-    e.preventDefault();
     setHolding(true);
     startRef.current = performance.now();
 

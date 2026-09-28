@@ -288,7 +288,7 @@ export const METHOD5_MOTIVES = [
 ];
 
 export const getMethod5Motive = (mysterySet, decade, hailMaryNumber) => {
-  const setOffset = { joyful: 0, sorrowful: 5, glorious: 10 };
+  const setOffset = { joyful: 0, sorrowful: 5, glorious: 10, luminous: 15 };
   const offset = setOffset[mysterySet];
   if (offset === undefined) return null;
   const idx = (offset + (decade - 1)) * 10 + (hailMaryNumber - 1);

@@ -11,9 +11,12 @@ function PrayerMethodSection({
   uiLang,
   accentColor = '#3b82f6',
   fontSize = 18,
+  animationsEnabled = true,
+  animationSpeed = 1.0,
 }) {
   const t = (TRANSLATIONS[uiLang]?.ui?.montfort) || TRANSLATIONS.en.ui.montfort;
   const [expanded, setExpanded] = useState(false);
+  const d = animationsEnabled ? 1 / (animationSpeed || 1) : 0;
 
   const selected = MONTFORT_METHODS.find((m) => m.id === method);
   const selectedLabel = selected ? t[selected.nameKey] : t.none;
@@ -64,7 +67,7 @@ function PrayerMethodSection({
           </span>
         </span>
         <ChevronDown
-          className={`w-4 h-4 shrink-0 ml-2 transition-transform ${expanded ? 'rotate-180' : ''} ${subColor}`}
+          className={`w-4 h-4 shrink-0 ml-2 ${animationsEnabled ? 'transition-transform' : ''} ${expanded ? 'rotate-180' : ''} ${subColor}`}
         />
       </button>
 
@@ -75,7 +78,7 @@ function PrayerMethodSection({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            transition={{ duration: 0.25 * d, ease: 'easeInOut' }}
             className="overflow-hidden"
           >
             <div className={`px-3 pb-3 pt-1 space-y-2 border-t ${cardBorder}`}>

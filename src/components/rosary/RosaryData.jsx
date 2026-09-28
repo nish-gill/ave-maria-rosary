@@ -4,7 +4,12 @@ import { TRANSLATIONS } from './Translations';
 const _mysteriesCache = new Map();
 
 export const getTranslatedMysteries = (language) => {
-  if (_mysteriesCache.has(language)) return _mysteriesCache.get(language);
+  // Only cache once the language's real data is loaded (see Translations.jsx
+  // — non-English languages load on demand). Caching a result built from the
+  // English fallback would otherwise "stick" forever, even after the real
+  // translation finishes loading a moment later.
+  const isLoaded = !!TRANSLATIONS[language];
+  if (isLoaded && _mysteriesCache.has(language)) return _mysteriesCache.get(language);
   const uiText = TRANSLATIONS[language]?.ui || TRANSLATIONS['en'].ui;
   
   // Default English mysteries data
@@ -107,12 +112,12 @@ export const getTranslatedMysteries = (language) => {
         },
         {
           verse: "Revelation 12:1",
-          text: "A great portent appeared in heaven: a woman clothed with the sun, with the moon under her feet, and on her head a crown of twelve stars.",
+          text: "A great portent appeared in heaven: a woman clothed with the sun, with the moon under her feet.",
           meditation: "Mary is assumed body and soul into heaven, a sign of the glory that awaits all who remain faithful to Christ."
         },
         {
           verse: "Revelation 12:1",
-          text: "A great portent appeared in heaven: a woman clothed with the sun, with the moon under her feet, and on her head a crown of twelve stars.",
+          text: "On her head a crown of twelve stars.",
           meditation: "Mary is crowned Queen of Heaven and Earth. As our mother, she intercedes for us and leads us closer to her Son."
         }
       ]
@@ -188,7 +193,7 @@ export const getTranslatedMysteries = (language) => {
       biblicalTexts: languageMysteries.luminous?.biblicalTexts || defaultMysteries.luminous.biblicalTexts
     }
   };
-  _mysteriesCache.set(language, result);
+  if (isLoaded) _mysteriesCache.set(language, result);
   return result;
 };
 
